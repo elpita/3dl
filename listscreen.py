@@ -88,22 +88,26 @@ class ListScreen(Screen_):
     def on_delete(self, instance):
         #ix = instance.index if (instance.accordion is ActionListView) else (instance.index + 3)
         cursor = self.root_directory.cursor()
-        cursor.execute("""
-                       DELETE FROM notebook
-                       WHERE ix=? AND what=?
-                       """,
-                       (instance.ix, instance.title))
+        sql = "DELETE FROM notebook WHERE page_number=? AND page=? AND ix=? AND what=?;"
+        values = (self.page_number, self.page, instance.ix, instance.text)
+        
+        if values[2] <> 3:
+            sql += "UPDATE notebook SET ix=(ix-1) WHERE page_number=? AND page=? AND ix>?"
+            values = (self.page_number, self.page, instance.ix, instance.text, self.page_number, self.page, instance.ix)
+
+        cursor.execute(sql, values)
         self.dispatch('on_pre_enter')#, self, self.page)
 
     def on_complete(self, instance):
         cursor = self.root_directory.cursor()
-        cursor.execute("""
-                       INSERT INTO archive(page, what, when_, why, how)
-                       SELECT page, what, when_, why, how
-                       FROM notebook
-                       WHERE page=? AND ix=? AND what=?
-                       """,
-                       (self.page, instance.ix, instance.title))
+        sql = "INSERT INTO archive(page, what, when_, why, how) SELECT page, what, when_, why, how FROM notebook WHERE page_number=? AND page=? AND ix=? AND what=?; DELETE FROM notebook WHERE page_number=? AND page=? AND ix=? AND what=?;"
+        values = (self.page_number, self.page, instance.ix, instance.text, self.page_number, self.page, instance.ix, instance.text)
+        
+        if values[2] <> 3:
+            sql += "UPDATE notebook SET ix=(ix-1) WHERE page_number=? AND page=? AND ix>?"
+            values = (self.page_number, self.page, instance.ix, instance.text, self.page_number, self.page, instance.ix, instance.text, self.page_number, self.page, instance.ix)
+
+        cursor.execute(sql, values)
         self.dispatch('on_pre_enter')#, self, self.page)
 
     def on_importance(self, instance, value):
