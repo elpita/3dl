@@ -30,6 +30,8 @@ class Screen_(Screen):
     _anim = ObjectProperty(None, allownone=True)
 
     def __init__(self, **kwargs):
+        self.register_event_type('on_delete')
+        self.register_event_type('on_complete')
         self.register_event_type('on_status_bar')
         super(Screen_, self).__init__(**kwargs)
 
@@ -616,16 +618,24 @@ class DeleteButton(Button_):
         self.trigger_action = Clock.create_trigger(self.trigger_release, 0)
 
     def on_press(self):
-        if self.button:
-            return self.button.screen.on_delete(self.button)
+        button = self.button
+
+        if button:
+            #animation?
+            button.parent.remove_widget(button)
+            Clock.schedule_once(button.screen.dispatch('on_delete', button), 0.15)
             
 
 class CompleteButton(DeleteButton):
     rectangle_size_x = NumericProperty(-100)
 
     def on_press(self):
-        if self.button:
-            return self.button.screen.on_complete(self.button)
+        button = self.button
+
+        if button:
+            #animation?
+            button.parent.remove_widget(button)
+            Clock.schedule_once(button.screen.dispatch('on_complete', button), 0.15)
 
 class DoubleClickButton(DoubleClickable):
     icon_text = StringProperty('')
