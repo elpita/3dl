@@ -1,8 +1,3 @@
-'''
-Created on Jul 23, 2013
-
-@author: Divine
-'''
 from kivy.properties import ObjectProperty, NumericProperty, ListProperty, OptionProperty, StringProperty, BooleanProperty, DictProperty, AliasProperty
 from kivy.uix.screenmanager import SlideTransition, Screen
 from kivy.graphics.transformation import Matrix
@@ -23,6 +18,21 @@ class StatusBar(Widget):
     def on_touch_down(self, touch):
         if self.collide_point(*touch.pos):
             self.parent.dispatch('on_status_bar')
+            return True
+
+class BoundedTextInput(TextInput):
+    max_chars = NumericProperty(31)
+    active_color = ListProperty([])
+    inactive_color = ListProperty([])
+
+    def insert_text(self, substring, from_undo=False):
+        if not from_undo and (len(self.text) + len(substring) > self.max_chars):
+            return
+        super(BoundedTextInput, self).insert_text(substring, from_undo)
+
+    def on_touch_down(self, touch):
+        super(BoundedTextInput, self).on_touch_down(touch)
+        return self.collide_point(*touch.pos)
 
 class Screen_(Screen):
     root_directory = ObjectProperty(None)
@@ -70,20 +80,6 @@ class Screen_(Screen):
 
     def on_status_bar(self, *args):
         pass
-
-class BoundedTextInput(TextInput):
-    max_chars = NumericProperty(31)
-    active_color = ListProperty([])
-    inactive_color = ListProperty([])
-
-    def insert_text(self, substring, from_undo=False):
-        if not from_undo and (len(self.text) + len(substring) > self.max_chars):
-            return
-        super(BoundedTextInput, self).insert_text(substring, from_undo)
-
-    def on_touch_down(self, touch):
-        super(BoundedTextInput, self).on_touch_down(touch)
-        return self.collide_point(*touch.pos)
 
 class Selectable(object):
     index = NumericProperty(-1)
@@ -193,7 +189,6 @@ class Clickable(Base):
                     touch.ungrab(self)
                     return sup
                 else:
-                    #touch.ungrab(self)
                     self._do_release()
                     self.trigger_release()
 
@@ -214,7 +209,7 @@ class DelayedClickable(Clickable):
         else:
             return False
     
-    #trigger_release = ObjectProperty(Clock.create_trigger(_release_, .15))
+    trigger_release = ObjectProperty(Clock.create_trigger(_release_, .15))
 
     def on_touch_up(self, touch):
         if touch.grab_current is self:
@@ -227,7 +222,6 @@ class DelayedClickable(Clickable):
                     touch.ungrab(self)
                     return sup
                 else:
-                    #touch.ungrab(self)
                     self.trigger_release()
 
         return super(Clickable, self).on_touch_up(touch)
@@ -274,7 +268,7 @@ class Deletable(Base):
         if touch.grab_current is self:
             assert(self in touch.ud)
 
-            if self.state == 'down':
+            if self.state == 'down':#in ('down', 'normal'):
                 sup = super(Base, self).on_touch_move(touch)
 
                 if sup:
@@ -363,7 +357,7 @@ class Completable(Base):
         if touch.grab_current is self:
             assert(self in touch.ud)
 
-            if self.state == 'down':
+            if self.state == 'down':#in ('down', 'normal'):
                 sup = super(Base, self).on_touch_move(touch)
 
                 if sup:
