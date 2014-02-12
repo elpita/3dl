@@ -71,36 +71,6 @@ class Screen_(Screen):
     def on_status_bar(self, *args):
         pass
 
-class Base(Widget):
-    text = StringProperty('')
-    aleft = BooleanProperty(False)
-    text_color = ListProperty([0, 0.824, 1, 1])
-    state_color = ListProperty([])
-    font_size = NumericProperty(0)
-    font_name = StringProperty('Walkway Bold.ttf')
-    shorten = BooleanProperty(False)
-    markup = BooleanProperty(False)
-
-    def on_state(self, *args):
-        pass
-
-    def on_touch_down(self, touch):
-        if not self.disabled:
-            touch.grab(self)
-            touch.ud[self] = True
-
-        return True
-
-    def on_touch_move(self, touch):
-        if touch.grab_current is not self:
-            return False
-
-    def on_touch_up(self, touch):
-        if touch.grab_current is not self:
-            return False
-        '''else:
-            touch.ungrab(self)'''
-
 class BoundedTextInput(TextInput):
     max_chars = NumericProperty(31)
     active_color = ListProperty([])
@@ -137,16 +107,59 @@ class Selectable(object):
     def on_release(self):
         pass
 
+class Base(Widget):
+    text = StringProperty('')
+    aleft = BooleanProperty(False)
+    text_color = ListProperty([0, 0.824, 1, 1])
+    state_color = ListProperty([])
+    font_size = NumericProperty(0)
+    font_name = StringProperty('Walkway Bold.ttf')
+    shorten = BooleanProperty(False)
+    markup = BooleanProperty(False)
+
+    def on_state(self, *args):
+        pass
+
+    def on_touch_down(self, touch):
+        if not self.disabled:
+            touch.grab(self)
+            touch.ud[self] = True
+
+        return True
+
+    def on_touch_move(self, touch):
+        if touch.grab_current is not self:
+            return False
+
+    def on_touch_up(self, touch):
+        if touch.grab_current is self:
+            touch.ungrab(self)
+            return True
+        else:
+            return False
+
 class Clickable(Base):
+
+    def _press_(self, dt):
+        if ((self.state == 'normal') and not self.disabled):
+            self._do_press()
+            self.dispatch('on_press')
+        else:
+            return False
+
+    def _release_(self, dt):
+        if self.state == 'normal':
+            self.dispatch('on_release')
+        else:
+            return False
+    
     state = OptionProperty('normal', options=('normal', 'down'))
-    _press_ = ObjectProperty(None)
-    _release_ = ObjectProperty(None)
+    trigger_press = ObjectProperty(Clock.create_trigger(_press_, 0.0625))
+    trigger_release = ObjectProperty(Clock.create_trigger(_release_, .15))
 
     def __init__(self, **kwargs):
         self.register_event_type('on_press')
         self.register_event_type('on_release')
-        self._press_ = Clock.create_trigger(self.trigger_press, 0.0625)
-        self._release_ = Clock.create_trigger(self.trigger_release, .15)
         super(Clickable, self).__init__(**kwargs)
 
     def _do_press(self):
@@ -162,10 +175,10 @@ class Clickable(Base):
         if self.state == 'normal':
             sup = super(Base, self).on_touch_down(touch)
 
-            if not sup:
-                self._press_()
-            else:
+            if sup:
                 return sup
+            else:
+                self.trigger_press()
 
         return super(Clickable, self).on_touch_down(touch)
 
@@ -176,13 +189,13 @@ class Clickable(Base):
             if self.state == 'down':
                 sup = super(Base, self).on_touch_up(touch)
 
-                if not sup:
-                    #touch.ungrab(self)
-                    self._do_release()
-                    self._release_()
-                else:
+                if sup:
                     touch.ungrab(self)
                     return sup
+                else:
+                    #touch.ungrab(self)
+                    self._do_release()
+                    self.trigger_release()
 
         return super(Clickable, self).on_touch_up(touch)
 
@@ -192,20 +205,16 @@ class Clickable(Base):
     def on_release(self):
         pass
 
-    def trigger_press(self, dt):
-        if ((self.state == 'normal') and not self.disabled):
-            self._do_press()
-            self.dispatch('on_press')
-        else:
-            return False
-
-    def trigger_release(self, dt):
-        if self.state == 'normal':
-            self.dispatch('on_release')
-        else:
-            return False
-
 class DelayedClickable(Clickable):
+
+    def _release_(self, dt):
+        if self.state == 'down':
+            self.dispatch('on_release')
+            self._do_release()
+        else:
+            return False
+    
+    #trigger_release = ObjectProperty(Clock.create_trigger(_release_, .15))
 
     def on_touch_up(self, touch):
         if touch.grab_current is self:
@@ -214,26 +223,14 @@ class DelayedClickable(Clickable):
             if self.state == 'down':
                 sup = super(Base, self).on_touch_up(touch)
 
-                if not sup:
-                    #touch.ungrab(self)
-                    self._release_()
-                else:
+                if sup:
                     touch.ungrab(self)
                     return sup
+                else:
+                    #touch.ungrab(self)
+                    self.trigger_release()
 
-        ret = super(Clickable, self).on_touch_up(touch)
- 
-        if not ret:
-            touch.ungrab(self)
-
-        return ret
-
-    def trigger_release(self, dt):
-        if self.state == 'down':
-            self.dispatch('on_release')
-            self._do_release()
-        else:
-            return False
+        return super(Clickable, self).on_touch_up(touch)
 
 class Deletable(Base):    
     state = OptionProperty('normal', options=('normal', 'delete'))
@@ -266,10 +263,7 @@ class Deletable(Base):
             sup = super(Base, self).on_touch_down(touch)
 
             if not sup:
-                layout = self.layout
-                _anim = Animation(right=self.right, t='out_quad', d=0.2)
-                _anim.bind(on_complete=lambda *_: self._do_release())
-                self._anim = _anim.start(layout)
+                self.dispatch('on_delete_out', self.layout)
 
             return True
 
@@ -334,14 +328,21 @@ class Completable(Base):
     state = OptionProperty('normal', options=('normal', 'complete'))
     complete_button = ObjectProperty(None, allownone=True)
 
+    def __init__(self, **kwargs):
+        self.register_event_type('on_complete_out')
+        super(Completable, self).__init__(**kwargs)
+
     def on_state(self, instance, value):
         if ((value <> 'complete') and instance.complete_button):
-            instance.layout.remove_widget(instance.complete_button, True)
+            if instance.layout.x <> instance.x:
+                instance.dispatch('on_complete_out', instance.layout)
+
+            instance.remove_widget(instance.complete_button)
             instance.complete_button = instance.screen.polestar = None
 
         elif value == 'complete':
-            instance.complete_button = completebutton = CompleteButton(size_hint_x=None, pos_hint_y={'center_y': .5}, button=self)
-            instance.layout.add_widget(completebutton, 1, True)
+            instance.complete_button = completebutton = CompleteButton(size=(instance.size[1], instance.size[1]), pos=instance.pos, button=self)
+            instance.add_widget(completebutton, 1)
             instance.screen.polestar = instance
 
         return super(Completable, self).on_state(instance, value)
@@ -351,7 +352,8 @@ class Completable(Base):
             sup = super(Base, self).on_touch_down(touch)
 
             if not sup:
-                self.state = 'normal'
+                self.dispatch('on_complete_out', self.layout)
+
             return True
 
         else:
@@ -367,12 +369,49 @@ class Completable(Base):
                 if sup:
                     touch.ungrab(self)
                     return sup
-                elif ((touch.dx > 20) and not self.complete_button):
+                elif ((touch.dx > 10) and not self.complete_button):
                     self.state = 'complete'
-                    touch.ungrab(self)
-                    return True
+
+            if self.state == 'complete':
+                new_pos = max(self.x, min((self.layout.x+touch.dx), self.complete_button.right))
+                self.layout.x = new_pos
+                return True
 
         return super(Completable, self).on_touch_move(touch)
+
+    def on_touch_up(self, touch):
+        if touch.grab_current is self:
+            assert(self in touch.ud)
+
+            if self.state == 'complete':
+                sup = super(Base, self).on_touch_up(touch)
+
+                if sup:
+                    touch.ungrab(self)
+                    return sup
+                else:
+                    touch.ungrab(self)
+                    layout = self.layout
+
+                    if (layout.x > 0.078125*self.width):
+                        self._anim = Animation(x=self.complete_button.right, t='out_quad', d=0.2).start(layout)
+                    else:
+                         self.dispatch('on_complete_out', layout)
+
+                    return True
+
+        return super(Completable, self).on_touch_up(touch)
+
+    def on_complete_out(self, layout, *args):
+        _anim = Animation(x=self.x, t='out_quad', d=0.2)
+
+        if self.state == 'complete':
+            def _do_release():
+                self.state = 'normal'
+
+            _anim.bind(on_complete=lambda *_: _do_release())
+
+        self._anim = _anim.start(layout)
 
 class DoubleClickable(Base):
     double_click_switch = BooleanProperty(False)
@@ -385,8 +424,10 @@ class DoubleClickable(Base):
                 touch.ungrab(self)
                 self.double_click_switch = not self.double_click_switch
                 return True
-
-        return super(DoubleClickable, self).on_touch_up(touch)
+                
+            else:
+                #return super(DoubleClickable, self).on_touch_up(touch)
+                return False
 
 class Editable(DoubleClickable):
     state = OptionProperty('normal', options=('normal', 'edit'))
@@ -421,14 +462,19 @@ class Editable(DoubleClickable):
         if touch.grab_current is self:
             assert(self in touch.ud)
 
-            if self.state == 'normal':
+            if self.state == 'edit':
                 touched_children = super(Base, self).on_touch_up(touch)
 
                 if touched_children:
                     touch.ungrab(self)
                     return touched_children
+                    
+            elif self.state == 'normal':
+                return super(Editable, self).on_touch_up(touch)
 
-        return super(Editable, self).on_touch_up(touch)
+        #return super(Editable, self).on_touch_up(touch)
+        print self.__mro__
+        return super(DoubleClickable, self).on_touch_up(touch)
 
     def on_double_click_switch(self, instance, value):
         if value:
@@ -488,11 +534,11 @@ class TouchDownAndHoldable(Base):
         return super(TouchDownAndHoldable, self).on_state(instance, value)
 
     def on_touch_down(self, touch):
-        if self.state == 'normal': #change to 'normal' later?
+        if self.state == 'normal':
             sup = super(Base, self).on_touch_down(touch)
 
             if not sup:
-                Clock.schedule_interval(self.on_hold_down, .1)
+                Clock.schedule_interval(self.on_hold_down, 0.1)
             else:
                 return sup
 
@@ -540,7 +586,7 @@ class TouchDownAndHoldable(Base):
 
                 for viewer in dzo:
                     if viewer.collide_point(*widget.center):
-                        viewer.dispatch('on_motion_out', widget, touch.ud['indices'])
+                        Clock.schedule_once(viewer.dispatch('on_motion_out', widget, touch.ud['indices']), 0.15)
                         return True
 
         return super(TouchDownAndHoldable, self).on_touch_up(touch)
@@ -656,25 +702,6 @@ class DoubleClickButton(DoubleClickable):
             return False
         else:
             return super(DoubleClickButton, self).on_touch_down(touch)
-
-class CustomBoxLayout(BoxLayout):
-
-    def add_widget(self, widget, index=0, to_layout=False):
-        super(CustomBoxLayout, self).add_widget(widget, index)
-
-        if to_layout:
-            widget._anim = Animation(rectangle_size_x=0, duration=0.2).start(widget)
-
-    def remove_widget(self, widget, to_layout=False, *args):
-        sup = super(CustomBoxLayout, self).remove_widget
-
-        if to_layout:
-            _anim = Animation(rectangle_size_x=widget.width,
-                              duration=0.2)
-            _anim.bind(on_complete=partial(self.remove_widget, widget, False))
-            widget._anim = _anim.start(widget)
-        else:
-            sup(widget)
 
 class FreeRotateLayout(Widget):
     content = ObjectProperty(None)
