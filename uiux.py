@@ -30,15 +30,17 @@ class Screen_(Screen):
     _anim = ObjectProperty(None, allownone=True)
 
     def __init__(self, **kwargs):
-        self.register_event_type('on_delete')
-        self.register_event_type('on_complete')
         self.register_event_type('on_status_bar')
         super(Screen_, self).__init__(**kwargs)
 
     def on_touch_down(self, touch):
-        if self.polestar:
-            touch.apply_transform_2d(self.polestar.to_widget)
-            ret = self.polestar.dispatch('on_touch_down', touch)
+        polestar = self.polestar
+
+        if polestar:
+            touch.push()
+            touch.apply_transform_2d(self.to_local)
+            ret = polestar.dispatch('on_touch_down', touch)
+            touch.pop()
 
             if not ret:
                 self.polestar = None
@@ -237,15 +239,22 @@ class Deletable(Base):
     state = OptionProperty('normal', options=('normal', 'delete'))
     delete_button = ObjectProperty(None, allownone=True)
 
+    def __init__(self, **kwargs):
+        self.register_event_type('on_delete_out')
+        super(Deletable, self).__init__(**kwargs)
+
     def on_state(self, instance, value):
         if ((value <> 'delete') and instance.delete_button):
+            if instance.layout.right <> instance.right:
+                instance.dispatch('on_delete_out', instance.layout)
+
             instance.remove_widget(instance.delete_button)
             instance.delete_button = None
             instance.screen.polestar = None
 
         elif value == 'delete':
             instance.delete_button = deletebutton = DeleteButton(size=(0.2*instance.size[0], instance.size[1]),
-                                                                 pos=((instance.right-(0.2*instance.size[0])), instance.y),
+                                                                 pos=((instance.right-(0.2*instance.size[0])), instance.pos[1]),
                                                                  button=instance)
             instance.add_widget(deletebutton, 1)
             instance.screen.polestar = instance
@@ -281,9 +290,8 @@ class Deletable(Base):
                     self.state = 'delete'
 
             if self.state == 'delete':
-                #self.layout.x += touch.dx
-                new_pos = self.layout.right + touch.dx
-                self.label.right = max(self.delete_button.x, min(new_pos, self.right))
+                new_pos = max(self.delete_button.x, min((self.layout.right+touch.dx), self.right))
+                self.layout.right = new_pos
                 return True
 
         return super(Deletable, self).on_touch_move(touch)
@@ -305,13 +313,22 @@ class Deletable(Base):
                     if (layout.right < 0.9*self.right):
                         self._anim = Animation(right=self.delete_button.x, t='out_quad', d=0.2).start(layout)
                     else:
-                        _anim = Animation(right=self.right, t='out_quad', d=0.2)
-                        _anim.bind(on_complete=lambda *_: self._do_release())
-                        self._anim = _anim.start(layout) 
+                         self.dispatch('on_delete_out', layout)
 
                     return True
 
         return super(Deletable, self).on_touch_up(touch)
+
+    def on_delete_out(self, layout, *args):
+        _anim = Animation(right=self.right, t='out_quad', d=0.2)
+
+        if self.state == 'delete':
+            def _do_release():
+                self.state = 'normal'
+
+            _anim.bind(on_complete=lambda *_: _do_release())
+
+        self._anim = _anim.start(layout)
 
 class Completable(Base):
     state = OptionProperty('normal', options=('normal', 'complete'))
@@ -618,24 +635,16 @@ class DeleteButton(Button_):
         self.trigger_action = Clock.create_trigger(self.trigger_release, 0)
 
     def on_press(self):
-        button = self.button
-
-        if button:
-            #animation?
-            button.parent.remove_widget(button)
-            Clock.schedule_once(button.screen.dispatch('on_delete', button), 0.15)
+        if self.button:
+            return self.button.screen.on_delete(self.button)
             
 
 class CompleteButton(DeleteButton):
     rectangle_size_x = NumericProperty(-100)
 
     def on_press(self):
-        button = self.button
-
-        if button:
-            #animation?
-            button.parent.remove_widget(button)
-            Clock.schedule_once(button.screen.dispatch('on_complete', button), 0.15)
+        if self.button:
+            return self.button.screen.on_complete(self.button)
 
 class DoubleClickButton(DoubleClickable):
     icon_text = StringProperty('')
@@ -891,7 +900,7 @@ Builder.load_string("""
         Color:
             rgba: app.shadow_gray
         Line:
-            points: self.x, self.top, self.right, self.top
+            points: self.x, self.top-1, self.right, self.top-1
             width: 1.0
 
 <CompleteButton>:
