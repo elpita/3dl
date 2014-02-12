@@ -262,7 +262,7 @@ class DNDListView(FloatLayout, ListViewAdapter):
     def on_motion_over(self, *args):
         pass
 
-    def on_motion_out(self, widget, _dict):
+    def on_motion_out(self, widget, _dict, *args):
         widget.title.state = 'normal'
         self.parent.dispatch('on_drop', _dict)
 
@@ -367,7 +367,7 @@ class ActionListView(AccordionListView):
             elif child.title.state <> 'normal':
                 child.title.state = 'normal'
 
-    def on_motion_out(self, widget, _dict):
+    def on_motion_out(self, widget, _dict, *args):
         children = self.container.children
 
         for child in children:
